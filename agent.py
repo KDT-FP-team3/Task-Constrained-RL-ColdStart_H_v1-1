@@ -4,12 +4,17 @@ import yfinance as yf
 import streamlit as st
 import config
 
-class SP500Environment:
-    """ S&P 500 대표 종목 및 벤치마크(SPY) 데이터를 관리하는 환경 """
+class KOSPIEnvironment:
+    """ KOSPI 대표 종목 및 벤치마크(코스피 지수) 데이터를 관리하는 환경 """
     def __init__(self):
-        self.tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "XOM", "LLY", "V",
-                        "JPM", "UNH", "WMT", "MA", "JNJ", "PG", "HD", "ORCL", "CVX", "MRK"]
-        self.benchmark = "SPY"
+        # KOSPI 대표 20종목 (yfinance: .KS = 코스피)
+        self.tickers = [
+            "005930.KS", "000660.KS", "051910.KS", "006400.KS", "035420.KS",  # 삼성전자, SK하이닉스, LG화학, 삼성SDI, 네이버
+            "035720.KS", "005380.KS", "000270.KS", "003550.KS", "068270.KS",  # 카카오, 현대차, 기아, LG, 셀트리온
+            "207940.KS", "105560.KS", "055550.KS", "032830.KS", "051900.KS",  # 삼성바이오, KB금융, 신한지주, 삼성생명, LG생활건강
+            "009150.KS", "017670.KS", "000810.KS", "096770.KS", "066570.KS",  # 삼성전기, SK텔레콤, 삼성화재, SK이노베이션, LG에너지솔루션
+        ]
+        self.benchmark = "^KS11"  # 코스피 지수
         self.all_symbols = self.tickers + [self.benchmark]
         
         self.data, self.tickers = self._download_data()
@@ -20,9 +25,11 @@ class SP500Environment:
         # 벤치마크를 포함하여 데이터 다운로드 (5년, 약 1260 거래일)
         data = yf.download(_self.all_symbols, period="5y", interval="1d")['Close']
         data = data.ffill().bfill().dropna(axis=1)
-        # _self를 직접 변형하지 않고 tickers를 반환값으로 전달 (mutation 경고 방지)
+        # yfinance 다중 종목 시 컬럼이 MultiIndex ('Close', '티커') → 단일 레벨(티커명)로 평탄화
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(1)
         tickers = [t for t in data.columns if t != _self.benchmark]
-        return data, tickers
+        return data, list(tickers)
 
 class StaticConstraintEngine:
     def __init__(self, env, current_step):
