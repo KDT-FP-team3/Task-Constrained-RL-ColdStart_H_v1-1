@@ -59,33 +59,46 @@ class StaticConstraintEngine:
         return np.where(self.valid_mask, logits, -np.inf)
 
 class RecommendationAgent:
-    # lr, gamma, eps 인자를 추가하고 기본값을 설정합니다.
     def __init__(self, env, use_constraints=True, lr=0.01, gamma=0.98, eps=0.1):
         self.env = env
         self.use_constraints = use_constraints
-        
-        # 주입받은 하이퍼파라미터를 에이전트 속성으로 저장
         self.lr = lr
         self.gamma = gamma
         self.epsilon = eps
-        
+        # Q-테이블: 종목별 가치 추정값 (초기값 0)
+        self.q_table = np.zeros(env.vocab_size)
+
     def select_action(self, current_step):
-        logits = np.random.randn(self.env.vocab_size)
         engine = StaticConstraintEngine(self.env, current_step)
-        
-        if self.use_constraints:
-            logits = engine.apply_mask(logits)
-            
-        chosen_action = int(np.argmax(logits))
-        
+
+        # ε-greedy: epsilon 확률로 탐험, 나머지는 Q값 기반 선택
+        if np.random.rand() < self.epsilon:
+            # 탐험: STATIC이면 유효 종목 중 랜덤, Vanilla면 전체 랜덤
+            if self.use_constraints:
+                valid_indices = np.where(engine.valid_mask)[0]
+                chosen_action = int(np.random.choice(valid_indices))
+            else:
+                chosen_action = int(np.random.randint(self.env.vocab_size))
+        else:
+            # 활용: Q값이 가장 높은 종목 선택
+            if self.use_constraints:
+                masked_q = np.where(engine.valid_mask, self.q_table, -np.inf)
+                chosen_action = int(np.argmax(masked_q))
+            else:
+                chosen_action = int(np.argmax(self.q_table))
+
         if current_step + 1 < len(self.env.data):
             current_price = float(self.env.data[self.env.tickers[chosen_action]].iloc[current_step])
             next_price = float(self.env.data[self.env.tickers[chosen_action]].iloc[current_step + 1])
             reward = ((next_price - current_price) / current_price) * 100 if current_price > 0 else 0.0
         else:
             reward = 0.0
-            
+
+        # TD 업데이트: Q[a] += lr * (r + gamma * max(Q) - Q[a])
+        best_next_q = np.max(self.q_table)
+        self.q_table[chosen_action] += self.lr * (reward + self.gamma * best_next_q - self.q_table[chosen_action])
+
         is_valid = engine.valid_mask[chosen_action]
         chosen_ticker = self.env.tickers[chosen_action]
-        
+
         return chosen_ticker, is_valid, reward
