@@ -24,10 +24,16 @@ class KOSPIEnvironment:
     def _download_data(_self):
         # 벤치마크를 포함하여 데이터 다운로드 (5년, 약 1260 거래일)
         data = yf.download(_self.all_symbols, period="5y", interval="1d")['Close']
-        data = data.ffill().bfill().dropna(axis=1)
+        data = data.ffill().bfill()
         # yfinance 다중 종목 시 컬럼이 MultiIndex ('Close', '티커') → 단일 레벨(티커명)로 평탄화
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(1)
+        # 벤치마크는 dropna 전에 따로 보존 (dropna로 날아가는 문제 방지)
+        benchmark_series = data[_self.benchmark] if _self.benchmark in data.columns else None
+        ticker_cols = [t for t in data.columns if t != _self.benchmark]
+        data = data[ticker_cols].dropna(axis=1)
+        if benchmark_series is not None:
+            data[_self.benchmark] = benchmark_series
         tickers = [t for t in data.columns if t != _self.benchmark]
         return data, list(tickers)
 
